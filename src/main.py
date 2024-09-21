@@ -13,7 +13,13 @@ app = FastAPI()
 embedder = MultiModalEmbedder()
 file_path='./utils/test.pdf'
 
-pinecone_instances = PineConeVectorDB(embedder=embedder , pdf_path=file_path)
+pinecone_instances = PineConeVectorDB(
+    api_key=os.getenv('PINECONE_API_KEY'),
+    region=os.getenv('PINECONE_REGION'),
+    index_name=os.getenv('PINECONE_INDEX'),
+    embedder=embedder, 
+    pdf_path=file_path
+    )
 pinecone_instances.connect()
 
 gemini = GenerateGeminiResponse(

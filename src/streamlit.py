@@ -19,8 +19,13 @@ generate_button = st.button("Generate Answer")
 
 if uploaded_file:
     try:
-        # Create a Pinecone instance with the uploaded PDF file
-        pinecone_instances = PineConeVectorDB(embedder=embedder, pdf_path=uploaded_file)
+        pinecone_instances = PineConeVectorDB(
+        api_key=os.getenv('PINECONE_API_KEY'),
+        region=os.getenv('PINECONE_REGION'),
+        index_name=os.getenv('PINECONE_INDEX'),
+        embedder=embedder,
+        pdf_path=uploaded_file 
+        )
         pinecone_instances.connect()
         pinecone_instances.upsert_embedding()
 

@@ -5,17 +5,14 @@ from models.embeddings import MultiModalEmbedder
 from .preprocessing import Image_Text_Extractor
 
 class PineConeVectorDB:
-    def __init__(self, embedder: MultiModalEmbedder, pdf_path: str):
+    def __init__(self,api_key:str,region:str,index_name:str, embedder: MultiModalEmbedder, pdf_path: str):
         load_dotenv()
-        self.API_KEY = os.getenv('PINECONE_API_KEY')
-        self.env = os.getenv('PINECONE_REGION')
-        self.index_name = os.getenv('PINECONE_INDEX')
+        self.API_KEY = api_key
+        self.env = region
+        self.index_name = index_name
         self.index = None
         self.embedder = embedder
         self.pdf_path = pdf_path
-        print(f"API_KEY:{self.API_KEY}")
-        print(f"INDEX NAME:{self.index_name}")
-        print(f"Region:{self.env}")
 
     def connect(self):
         try:
