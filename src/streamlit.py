@@ -8,7 +8,13 @@ from PIL import Image
 
 load_dotenv()
 
-embedder = MultiModalEmbedder()
+gemini_api_key = st.secrets["general_api_keys"]["GEMINI_API_KEY"]
+pinecone_api_key = st.secrets["general_api_keys"]["PINECONE_API_KEY"]
+hf_key = st.secrets["general_api_keys"]["HF_KEY"]
+pinecone_index = st.secrets["general_api_keys"]["PINECONE_INDEX"]
+pinecone_region = st.secrets["general_api_keys"]["PINECONE_REGION"]
+
+embedder = MultiModalEmbedder(api_key=hf_key)
 pinecone_instances = None  
 
 st.title("Multimodal RAG Application")
@@ -17,12 +23,13 @@ uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
 generate_button = st.button("Generate Answer")
 
+
 if uploaded_file:
     try:
         pinecone_instances = PineConeVectorDB(
-        api_key=os.getenv('PINECONE_API_KEY'),
-        region=os.getenv('PINECONE_REGION'),
-        index_name=os.getenv('PINECONE_INDEX'),
+        api_key=pinecone_api_key,
+        region=pinecone_region,
+        index_name=pinecone_index,
         embedder=embedder,
         pdf_path=uploaded_file 
         )
@@ -30,7 +37,7 @@ if uploaded_file:
         pinecone_instances.upsert_embedding()
 
         gemini = GenerateGeminiResponse(
-            Gemini_API_KEY=os.getenv('GEMINI_API_KEY'),
+            Gemini_API_KEY=gemini_api_key,
             pinecone=pinecone_instances,
             Embedder=embedder,
             model='models/gemini-pro'

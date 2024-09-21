@@ -11,9 +11,10 @@ hf_key = os.getenv('HF_KEY')
 login(hf_key)
 
 class MultiModalEmbedder:
-    def __init__(self, align_model_name='kakaobrain/align-base'):
+    def __init__(self,api_key:str, align_model_name='kakaobrain/align-base'):
         self.processor = AlignProcessor.from_pretrained(align_model_name)
         self.model = AlignModel.from_pretrained(align_model_name)
+        login(api_key)
 
     def embed_text_and_image(self, text: str, image: Image.Image) -> list[float]:
         print(f"Embedding text: '{text}'")
