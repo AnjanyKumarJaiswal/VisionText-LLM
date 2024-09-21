@@ -12,7 +12,7 @@ gemini_api_key = st.secrets["GEMINI_API_KEY"]
 pinecone_api_key = st.secrets["PINECONE_API_KEY"]
 hf_key = st.secrets["HF_KEY"]
 pinecone_index = st.secrets["PINECONE_INDEX"]
-pinecone_region = st.secrets-["PINECONE_REGION"]
+pinecone_region = st.secrets["PINECONE_REGION"]
 
 embedder = MultiModalEmbedder(api_key=hf_key)
 pinecone_instances = None  
