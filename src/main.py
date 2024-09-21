@@ -11,7 +11,7 @@ load_dotenv()
 app = FastAPI()
 
 embedder = MultiModalEmbedder()
-file_path='./utils/test.pdf'
+file_path='./../test.pdf'
 
 pinecone_instances = PineConeVectorDB(
     api_key=os.getenv('PINECONE_API_KEY'),
