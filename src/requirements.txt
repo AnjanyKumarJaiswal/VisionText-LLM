@@ -1,6 +1,7 @@
 transformers
 torch
 pillow
+streamlit
 sentence-transformers
 python-dotenv
 fastapi
