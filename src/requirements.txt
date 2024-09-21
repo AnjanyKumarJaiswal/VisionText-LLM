@@ -1,0 +1,11 @@
+transformers
+torch
+pillow
+sentence-transformers
+python-dotenv
+fastapi
+uvicorn
+pinecone
+PyPDF2
+google-generativeai
+pymupdf
