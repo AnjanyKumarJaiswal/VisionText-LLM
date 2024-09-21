@@ -10,7 +10,7 @@ load_dotenv()
 
 gemini_api_key = st.secrets["GEMINI_API_KEY"]
 pinecone_api_key = st.secrets["PINECONE_API_KEY"]
-hf_key = st.secre["HF_KEY"]
+hf_key = st.secrets["HF_KEY"]
 pinecone_index = st.secrets["PINECONE_INDEX"]
 pinecone_region = st.secrets-["PINECONE_REGION"]
 
