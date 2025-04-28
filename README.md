@@ -1,5 +1,7 @@
 # Multimodal RAG Application
 
+<!-- GitAds-Verify: EWPTK5FXPNB5A6AFQ8UKPHBXZ6LAUZ4Q -->
+
 This project implements a multimodal Retrieval Augmented Generation (RAG) application that leverages both text and image content to provide comprehensive answers to user queries.
 
 ## Task Description
