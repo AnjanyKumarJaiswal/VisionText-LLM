@@ -10,7 +10,9 @@ load_dotenv()
 
 app = FastAPI()
 
-embedder = MultiModalEmbedder()
+HF_API_KEY = os.getenv("HF_KEY")
+
+embedder = MultiModalEmbedder(api_key=HF_API_KEY)
 file_path='./../test.pdf'
 
 pinecone_instances = PineConeVectorDB(
