@@ -1,12 +1,11 @@
-transformers
+transformers>=5
 torch
 pillow
 streamlit
-sentence-transformers
 python-dotenv
 fastapi
 uvicorn
-pinecone
-PyPDF2
-google-generativeai
-pymupdf
+chromadb>=1.5
+google-genai>=3
+openai>=3
+pymupdf>=2

@@ -1,49 +1,46 @@
-from fastapi import FastAPI
+import logging
+from contextlib import asynccontextmanager
+
 import uvicorn
-from utils.pineconedb import PineConeVectorDB
-from models.embeddings import MultiModalEmbedder
-from models.gemini import GenerateGeminiResponse
-from dotenv import load_dotenv
-import os
+from fastapi import FastAPI, HTTPException, Query, Request
 
-load_dotenv()
+from config import Settings
+from pipeline import RAGPipeline
 
-app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-HF_API_KEY = os.getenv("HF_KEY")
 
-embedder = MultiModalEmbedder(api_key=HF_API_KEY)
-file_path='./../test.pdf'
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = Settings.load()
+    app.state.pipeline = RAGPipeline(settings)
+    app.state.document = app.state.pipeline.ingest(settings.pdf_path)
+    yield
 
-pinecone_instances = PineConeVectorDB(
-    api_key=os.getenv('PINECONE_API_KEY'),
-    region=os.getenv('PINECONE_REGION'),
-    index_name=os.getenv('PINECONE_INDEX'),
-    embedder=embedder, 
-    pdf_path=file_path
-    )
-pinecone_instances.connect()
 
-gemini = GenerateGeminiResponse(
-    Gemini_API_KEY=os.getenv('GEMINI_API_KEY'),
-    pinecone=pinecone_instances,
-    Embedder=embedder,
-    model='models/gemini-pro'
-)
+app = FastAPI(title="Multimodal RAG Application", lifespan=lifespan)
 
-pinecone_instances.upsert_embedding()
 
 @app.get('/')
 def run():
-    return {"message":"This Server is Working hehe"}
+    return {"message": "This Server is Working hehe"}
+
 
 @app.get('/run')
-def rag_app(query:str) -> str:
+def rag_app(request: Request, query: str = Query(min_length=1)) -> dict:
+    state = request.app.state
     try:
-        generated_respones = gemini.generate_query(query)
-        return generated_respones
-    except Exception as e:
-        print("An Error Occured!! :(")
+        answer = state.pipeline.answer(query, state.document)
+    except Exception as exc:
+        logger.exception("Could not answer query %r", query)
+        raise HTTPException(status_code=502, detail=f"Could not generate an answer: {exc}") from exc
+    return {
+        "answer": answer.text,
+        "pages": answer.pages,
+        "image_pages": [item.page for item in answer.images],
+    }
+
 
 if __name__ == '__main__':
-    uvicorn.run(app=app,host="localhost" , port=8000)
+    uvicorn.run(app=app, host="localhost", port=8000)

@@ -1,37 +1,56 @@
-from huggingface_hub import login
-from dotenv import load_dotenv
-import os
-from PIL import Image
+"""Text and image embeddings in ALIGN's shared vector space."""
+
+from __future__ import annotations
+
 import torch
-from transformers import AlignProcessor, AlignModel
+from PIL import Image
+from transformers import AlignModel, AlignProcessor
 
-load_dotenv()
+BATCH_SIZE = 16
+MAX_TEXT_TOKENS = 64
 
-hf_key = os.getenv('HF_KEY')
-login(hf_key)
+
+def _unit_length(features: torch.Tensor) -> list[list[float]]:
+    return torch.nn.functional.normalize(features, dim=-1).tolist()
+
 
 class MultiModalEmbedder:
-    def __init__(self,api_key:str, align_model_name='kakaobrain/align-base'):
-        self.processor = AlignProcessor.from_pretrained(align_model_name)
-        self.model = AlignModel.from_pretrained(align_model_name)
-        login(api_key)
+    """Embeds text and images separately into the same space.
 
-    def embed_text_and_image(self, text: str, image: Image.Image) -> list[float]:
-        print(f"Embedding text: '{text}'")
-        print(f"Image shape: {image.size}")
+    Because both live in one space, a text query can be compared directly with
+    text chunks and with images.
+    """
 
-        inputs = self.processor(text=text, images=image, return_tensors='pt')
-        inputs['pixel_values'] = inputs.pixel_values
+    def __init__(self, api_key: str | None = None, align_model_name: str = "kakaobrain/align-base"):
+        self.processor = AlignProcessor.from_pretrained(align_model_name, token=api_key)
+        self.model = AlignModel.from_pretrained(align_model_name, token=api_key).eval()
+        self.dimension: int = self.model.config.projection_dim
 
-        with torch.no_grad():
-            outputs = self.model(**inputs)
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), BATCH_SIZE):
+            inputs = self.processor.tokenizer(
+                texts[start : start + BATCH_SIZE],
+                padding="max_length",
+                truncation=True,
+                max_length=MAX_TEXT_TOKENS,
+                return_tensors="pt",
+            )
+            with torch.no_grad():
+                features = self.model.get_text_features(**inputs).pooler_output
+            vectors += _unit_length(features)
+        return vectors
 
-        combined_embedding = outputs.text_embeds.squeeze().tolist() + outputs.image_embeds.squeeze().tolist()
-        print("\n\nSuccessfully extracted text and image embeddings\n\n")
-        print(f"Combined embedding shape: {len(combined_embedding)}")
-        return combined_embedding
+    def embed_images(self, images: list[Image.Image]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for start in range(0, len(images), BATCH_SIZE):
+            inputs = self.processor.image_processor(
+                images=images[start : start + BATCH_SIZE], return_tensors="pt"
+            )
+            with torch.no_grad():
+                features = self.model.get_image_features(**inputs).pooler_output
+            vectors += _unit_length(features)
+        return vectors
 
-    def embed_query_for_pinecone(self, query: str) -> list[float]:
-        # print(f"Embedding query: '{query}' for Pinecone search...")
-        placeholder_image = Image.new('RGB', (224, 224), (255, 255, 255))
-        return self.embed_text_and_image(text=query, image=placeholder_image)
+    def embed_query(self, query: str) -> list[float]:
+        return self.embed_texts([query])[0]

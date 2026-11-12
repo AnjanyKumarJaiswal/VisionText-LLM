@@ -1,34 +1,103 @@
-from PyPDF2 import PdfReader
-from PIL import Image
-import fitz
+"""Extract the text and embedded images of a PDF."""
+
+from __future__ import annotations
+
+import hashlib
 import io
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+
+import pymupdf
+from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+CHUNK_WORDS = 40
+CHUNK_OVERLAP = 10
+MIN_IMAGE_SIDE = 32
+MAX_IMAGE_SIDE = 1600
+
+
+@dataclass(frozen=True)
+class TextChunk:
+    page: int
+    text: str
+
+
+@dataclass(frozen=True)
+class PageImage:
+    page: int
+    image: Image.Image
+
+
+@dataclass(frozen=True)
+class Document:
+    doc_id: str
+    pages: list[str]
+    chunks: list[TextChunk]
+    images: list[PageImage]
+
+
+def chunk_text(text: str, size: int = CHUNK_WORDS, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    words = text.split()
+    if not words:
+        return []
+    starts = range(0, max(len(words) - overlap, 1), size - overlap)
+    return [" ".join(words[start : start + size]) for start in starts]
+
 
 class Image_Text_Extractor:
-    def __init__(self, pdf_path: str = './test.pdf'):
-        self.pdf_path = pdf_path
+    def __init__(self, pdf: str | Path | bytes):
+        """`pdf` is a path to a PDF file or the raw bytes of one."""
+        self.pdf = pdf
 
-    def extract_text_and_images(self) -> tuple[list, list]:
-        
-        pdf_text = []
-        pdf_img = []
+    def extract_text_and_images(self) -> Document:
+        data = self.pdf if isinstance(self.pdf, bytes) else Path(self.pdf).read_bytes()
 
-        with open(self.pdf_path, 'rb') as pdf_file:
-            pdf_reader = PdfReader(pdf_file)
-            doc = fitz.open(self.pdf_path)
+        pages: list[str] = []
+        chunks: list[TextChunk] = []
+        images: list[PageImage] = []
+        seen_xrefs: set[int] = set()
 
-            for page_num in range(len(pdf_reader.pages)):
-                # Text Extraction
-                page = pdf_reader.pages[page_num]
-                pdf_text.append(page.extract_text())
+        try:
+            pdf = pymupdf.open(stream=data, filetype="pdf")
+        except pymupdf.FileDataError as exc:
+            raise ValueError("The file could not be read as a PDF.") from exc
 
-                # Image Extraction
-                fitz_page = doc[page_num]
-                img_list = fitz_page.get_images(full=True)
-                for img_index, img in enumerate(img_list):
-                    xref = img[0]
-                    base_img = doc.extract_image(xref=xref)
-                    img_bytes = base_img['image']
-                    image = Image.open(io.BytesIO(img_bytes))
-                    pdf_img.append(image)
+        with pdf:
+            if pdf.needs_pass:
+                raise ValueError("The PDF is password-protected. Remove the password and try again.")
 
-        return pdf_text, pdf_img 
+            for number, page in enumerate(pdf, start=1):
+                text = page.get_text().strip()
+                pages.append(text)
+                chunks.extend(TextChunk(number, chunk) for chunk in chunk_text(text))
+
+                for xref, *_ in page.get_images(full=True):
+                    if xref in seen_xrefs:
+                        continue
+                    seen_xrefs.add(xref)
+                    image = self._load_image(pdf, xref, number)
+                    if image is not None:
+                        images.append(PageImage(number, image))
+
+        if not chunks and not images:
+            raise ValueError("The PDF has no extractable text or images.")
+
+        return Document(hashlib.sha256(data).hexdigest()[:16], pages, chunks, images)
+
+    @staticmethod
+    def _load_image(pdf: pymupdf.Document, xref: int, page: int) -> Image.Image | None:
+        try:
+            raw = pdf.extract_image(xref)["image"]
+            image = Image.open(io.BytesIO(raw))
+            if min(image.size) < MIN_IMAGE_SIDE:
+                return None
+            image.draft(None, (MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+            image = image.convert("RGB")
+        except Exception as exc:
+            logger.warning("Skipping unreadable image on page %d: %s", page, exc)
+            return None
+        image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+        return image

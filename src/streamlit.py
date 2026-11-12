@@ -1,54 +1,68 @@
+import logging
+
 import streamlit as st
-from models.embeddings import MultiModalEmbedder
-from models.gemini import GenerateGeminiResponse
-from utils.pineconedb import PineConeVectorDB
-from dotenv import load_dotenv
-import os
-from PIL import Image
 
-load_dotenv()
+from config import Settings
+from pipeline import RAGPipeline
 
-gemini_api_key = st.secrets["GEMINI_API_KEY"]
-pinecone_api_key = st.secrets["PINECONE_API_KEY"]
-hf_key = st.secrets["HF_KEY"]
-pinecone_index = st.secrets["PINECONE_INDEX"]
-pinecone_region = st.secrets["PINECONE_REGION"]
-
-embedder = MultiModalEmbedder(api_key=hf_key)
-pinecone_instances = None  
-
-st.title("Multimodal RAG Application")
-
-uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
-
-generate_button = st.button("Generate Answer")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-if uploaded_file:
+def read_secrets() -> dict[str, str]:
     try:
-        pinecone_instances = PineConeVectorDB(
-        api_key=pinecone_api_key,
-        region=pinecone_region,
-        index_name=pinecone_index,
-        embedder=embedder,
-        pdf_path=uploaded_file 
-        )
-        pinecone_instances.connect()
-        pinecone_instances.upsert_embedding()
+        return {key: value for key, value in st.secrets.items() if isinstance(value, str)}
+    except FileNotFoundError:
+        return {}
 
-        gemini = GenerateGeminiResponse(
-            Gemini_API_KEY=gemini_api_key,
-            pinecone=pinecone_instances,
-            Embedder=embedder,
-            model='models/gemini-pro'
-        )
 
-        user_query = st.text_input("Ask me anything!", "")
-        if generate_button:
-            if user_query:
-                response = gemini.generate_query(user_query)
-                st.text(response)
-            else:
-                st.warning("Please enter a question.")
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+@st.cache_resource(show_spinner="Loading the models...")
+def get_pipeline() -> RAGPipeline:
+    return RAGPipeline(Settings.load(overrides=read_secrets()))
+
+
+def main() -> None:
+    st.title("Multimodal RAG Application")
+
+    uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+    if uploaded_file is None:
+        st.info("Upload a PDF to start asking questions about its text and images.")
+        return
+
+    pipeline = get_pipeline()
+
+    if st.session_state.get("file_id") != uploaded_file.file_id:
+        with st.spinner("Reading and indexing the PDF..."):
+            st.session_state.document = pipeline.ingest(uploaded_file.getvalue())
+        st.session_state.file_id = uploaded_file.file_id
+    document = st.session_state.document
+    st.caption(
+        f"Indexed - pages: {len(document.pages)}, "
+        f"text chunks: {len(document.chunks)}, images: {len(document.images)}"
+    )
+
+    with st.form("question"):
+        user_query = st.text_input("Ask me anything!")
+        submitted = st.form_submit_button("Generate Answer")
+    if not submitted:
+        return
+    if not user_query.strip():
+        st.warning("Please enter a question.")
+        return
+
+    with st.spinner("Generating the answer..."):
+        answer = pipeline.answer(user_query, document)
+    st.markdown(answer.text)
+
+    with st.expander("Sources used for this answer"):
+        if answer.pages:
+            st.write("Text from page(s): " + ", ".join(str(page) for page in answer.pages))
+        for item in answer.images:
+            st.image(item.image, caption=f"Image from page {item.page}")
+
+
+try:
+    main()
+except Exception as exc:
+    logger.exception("The app failed")
+    st.error(f"An error occurred: {exc}")
